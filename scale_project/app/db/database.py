@@ -152,6 +152,14 @@ def get_all_aggregate_types(db_session: Session) -> list[AggregateType]:
     try: return db_session.query(AggregateType).order_by(AggregateType.name).all()
     except Exception as e: print(f"Error retrieving aggregate types: {e}"); return []
 
+def get_aggregate_type_by_name(db_session: Session, name: str) -> AggregateType | None:
+    """Retrieves a single aggregate type by its exact name."""
+    try:
+        return db_session.query(AggregateType).filter(AggregateType.name == name).first()
+    except Exception as e:
+        print(f"Error retrieving aggregate type by name '{name}': {e}")
+        return None
+
 # --- DeliveryLocation CRUD ---
 def add_delivery_location(db_session: Session, name: str, address: str = None) -> DeliveryLocation | None:
     if not name: print("Error: Delivery Location name cannot be empty."); return None
@@ -218,6 +226,14 @@ def add_weight_ticket(db_session: Session, truck_id: int, aggregate_type_id: int
         db_session.rollback(); print(f"Error adding weight ticket: FK constraint failed."); return None
     except Exception as e:
         db_session.rollback(); print(f"Unexpected error adding weight ticket: {e}"); return None
+
+def get_weight_ticket_by_id(db_session: Session, ticket_id: int) -> WeightTicket | None:
+    """Retrieves a single weight ticket by its primary key."""
+    try:
+        return db_session.query(WeightTicket).filter(WeightTicket.id == ticket_id).first()
+    except Exception as e:
+        print(f"Error retrieving weight ticket by ID '{ticket_id}': {e}")
+        return None
 
 # --- AuditLog ---
 def add_audit_log_entry(db_session: Session, table_name: str, record_id: int, action: str,

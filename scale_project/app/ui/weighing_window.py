@@ -1,9 +1,12 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from app.db.database import (get_all_trucks_mru_ordered, search_trucks, # Use new truck functions
+import json
+from app.db.database import (get_all_trucks_mru_ordered, search_trucks,
                              get_all_aggregate_types, get_all_delivery_locations,
-                             add_weight_ticket, add_audit_log_entry, get_db, get_truck_by_id)
-from app.db.models import Truck, AggregateType, DeliveryLocation 
+                             add_weight_ticket, add_audit_log_entry, get_db, get_truck_by_id, get_weight_ticket_by_id)
+from app.db.models import Truck, AggregateType, DeliveryLocation, WeightTicket
+from app.utils.ticket_printer import TicketPrinter
+from .ticket_preview_window import TicketPreviewWindow
 
 class WeighingWindow(tk.Toplevel):
     def __init__(self, parent, scale_reader, update_interval_ms=500):
@@ -21,6 +24,8 @@ class WeighingWindow(tk.Toplevel):
 
         self.selected_truck_obj: Truck | None = None
         self.current_scale_weight: float | None = None
+        self.last_saved_ticket_id: int | None = None
+        self.ticket_layout = self._load_ticket_layout()
         self.trucks_map = {} # Will be populated by load_trucks_into_combobox
 
         self.db_session = next(get_db())
@@ -99,12 +104,18 @@ class WeighingWindow(tk.Toplevel):
         action_frame = ttk.Frame(main_frame, padding="10")
         action_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=10)
         
+        self.cancel_button = ttk.Button(action_frame, text="Close", command=self.on_closing)
+        self.cancel_button.pack(side=tk.RIGHT, padx=5)
+
+        self.print_button = ttk.Button(action_frame, text="Print Ticket", command=self.print_last_ticket, state=tk.DISABLED)
+        self.print_button.pack(side=tk.RIGHT, padx=5)
+
+        self.preview_button = ttk.Button(action_frame, text="Preview Ticket", command=self.preview_last_ticket, state=tk.DISABLED)
+        self.preview_button.pack(side=tk.RIGHT, padx=5)
+
         self.save_button = ttk.Button(action_frame, text="Record Weighing", command=self.save_ticket, style="Accent.TButton")
         self.save_button.pack(side=tk.RIGHT, padx=5)
         ttk.Style().configure("Accent.TButton", font=('Helvetica', 10, 'bold'), foreground="green")
-
-        self.cancel_button = ttk.Button(action_frame, text="Close", command=self.on_closing)
-        self.cancel_button.pack(side=tk.RIGHT, padx=5)
 
         main_frame.columnconfigure(0, weight=1); main_frame.columnconfigure(1, weight=1)
         truck_frame.columnconfigure(1, weight=1)
@@ -113,6 +124,15 @@ class WeighingWindow(tk.Toplevel):
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.update_live_weight_display()
+
+    def _load_ticket_layout(self):
+        """Loads the ticket layout from the JSON file."""
+        try:
+            with open("scale_project/app/ticket_layout.json", 'r') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            messagebox.showerror("Error", f"Could not load ticket layout file: {e}", parent=self)
+            return []
 
     def load_trucks_into_combobox(self, trucks_list: list[Truck] | None = None):
         """Populates the truck combobox with the given list of trucks or all MRU trucks if None."""
@@ -171,6 +191,9 @@ class WeighingWindow(tk.Toplevel):
         else:
             self.tare_weight_var.set("--.-- kg")
         self.recalculate_net_weight()
+        self.print_button.config(state=tk.DISABLED)
+        self.preview_button.config(state=tk.DISABLED)
+
 
     def capture_gross_weight(self):
         # ... (same as before)
@@ -194,6 +217,8 @@ class WeighingWindow(tk.Toplevel):
             else: self.net_weight_var.set("--.-- kg (Select Truck)")
         except ValueError: self.net_weight_var.set("Invalid Gross Wt.")
         except Exception: self.net_weight_var.set("Error")
+        self.print_button.config(state=tk.DISABLED)
+        self.preview_button.config(state=tk.DISABLED)
 
     def save_ticket(self):
         # ... (validation logic mostly same as before)
@@ -240,24 +265,90 @@ class WeighingWindow(tk.Toplevel):
         )
 
         if ticket:
+            self.last_saved_ticket_id = ticket.id
             add_audit_log_entry(
                 db_session=self.db_session, table_name="WeightTickets", record_id=ticket.id,
                 action="INSERT", changed_by=operator_name, new_values=ticket
             )
             messagebox.showinfo("Success", f"Weight Ticket #{ticket.id} saved successfully!", parent=self)
+            self.print_button.config(state=tk.NORMAL)
+            self.preview_button.config(state=tk.NORMAL)
             
-            # Refresh truck list in combobox to reflect MRU change (optional, but good UX)
-            # This might re-trigger on_truck_selected if selection changes, so be mindful
             original_search_term = self.truck_search_var.get().strip()
-            self.perform_truck_search() # This will use current search term or load all if empty
+            self.perform_truck_search()
             
-            # After search, try to restore selection of the truck just used for the ticket
-            # This is a bit complex as the key format is "Company - Unit (ID)"
-            # For simplicity, we'll just clear form for now. Advanced UX could try to reselect.
-            self.clear_form(clear_search=False) # Keep search term if user wants to add another for same search
-            self.truck_search_entry.focus_set() # Focus search for next potential search
+            self.clear_form(clear_search=False)
+            self.truck_search_entry.focus_set()
         else:
+            self.last_saved_ticket_id = None
+            self.print_button.config(state=tk.DISABLED)
+            self.preview_button.config(state=tk.DISABLED)
             messagebox.showerror("Database Error", "Failed to save weight ticket. Check logs.", parent=self)
+
+    def _create_ticket_data_dict(self, ticket: WeightTicket) -> dict:
+        """Creates a dictionary of ticket data for the printer."""
+        return {
+            "ticket_id": ticket.id,
+            "company_name": ticket.truck.company_name,
+            "unit_id": ticket.truck.unit_id,
+            "gross_weight": ticket.gross_weight,
+            "tare_weight": ticket.tare_weight_at_weighing,
+            "net_weight": ticket.net_weight,
+            "aggregate_name": ticket.aggregate_type.name,
+            "location_name": ticket.delivery_location.name,
+            "timestamp": ticket.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            "operator": ticket.operator_name or "N/A"
+        }
+
+    def preview_last_ticket(self):
+        """Shows a preview of the last saved weight ticket."""
+        if self.last_saved_ticket_id is None:
+            messagebox.showwarning("Preview Error", "No ticket has been saved yet.", parent=self)
+            return
+
+        if not self.ticket_layout:
+            messagebox.showerror("Preview Error", "Ticket layout is missing or invalid. Cannot show preview.", parent=self)
+            return
+
+        ticket = get_weight_ticket_by_id(self.db_session, self.last_saved_ticket_id)
+        if not ticket:
+            messagebox.showerror("Preview Error", f"Could not find ticket #{self.last_saved_ticket_id} to preview.", parent=self)
+            return
+
+        ticket_data = self._create_ticket_data_dict(ticket)
+
+        # Open the preview window
+        TicketPreviewWindow(self, ticket_data, self.ticket_layout)
+
+    def print_last_ticket(self):
+        """Prints the last saved weight ticket."""
+        if self.last_saved_ticket_id is None:
+            messagebox.showwarning("Print Error", "No ticket has been saved yet.", parent=self)
+            return
+
+        if not self.ticket_layout:
+            messagebox.showerror("Print Error", "Ticket layout is missing or invalid. Cannot print.", parent=self)
+            return
+
+        ticket = get_weight_ticket_by_id(self.db_session, self.last_saved_ticket_id)
+        if not ticket:
+            messagebox.showerror("Print Error", f"Could not find ticket #{self.last_saved_ticket_id} to print.", parent=self)
+            return
+
+        ticket_data = self._create_ticket_data_dict(ticket)
+
+        # TODO: Make port configurable
+        printer = TicketPrinter(port='/dev/ttyUSB0')
+
+        try:
+            printer.print_ticket(ticket_data, self.ticket_layout)
+            # Optionally update the ticket record to mark it as printed
+            ticket.ticket_printed = True
+            self.db_session.commit()
+            messagebox.showinfo("Print Success", f"Ticket #{ticket.id} sent to printer.", parent=self)
+        except Exception as e:
+            messagebox.showerror("Printer Error", f"An error occurred while printing: {e}", parent=self)
+
 
     def clear_form(self, clear_search=True):
         if clear_search:
@@ -271,7 +362,9 @@ class WeighingWindow(tk.Toplevel):
         self.tare_weight_var.set("--.-- kg")
         self.net_weight_var.set("--.-- kg")
         self.selected_truck_obj = None
-        # self.truck_combo.focus_set() # Focus might be better on search entry after save
+        self.print_button.config(state=tk.DISABLED)
+        self.preview_button.config(state=tk.DISABLED)
+        self.last_saved_ticket_id = None
 
     def on_closing(self):
         # ... (same as before)

@@ -1,0 +1,82 @@
+[
+  {
+    "content": "      *** {company_name} ***",
+    "font": "A",
+    "size": { "width": 2, "height": 2 }
+  },
+  {
+    "content": "",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "Date: {timestamp}",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "Ticket #: {ticket_id}",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "----------------------------------------",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "Truck: {unit_id}",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "Material: {aggregate_name}",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "Destination: {location_name}",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "----------------------------------------",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "Gross: {gross_weight:>10.2f} kg",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": " Tare: {tare_weight:>10.2f} kg",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "  Net: {net_weight:>10.2f} kg",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "----------------------------------------",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "Operator: {operator}",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  },
+  {
+    "content": "Signature:___________________________",
+    "font": "A",
+    "size": { "width": 1, "height": 1 }
+  }
+]
