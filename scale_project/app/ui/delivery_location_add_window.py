@@ -109,7 +109,10 @@ if __name__ == '__main__':
     current_test_is_edit_mode_dl = False # DL for DeliveryLocation
 
     class MockDBSession:
-        def add(self, obj): pass; def commit(self): pass; def refresh(self, obj): pass; def rollback(self): pass
+        def add(self, obj): pass
+        def commit(self): pass
+        def refresh(self, obj): pass
+        def rollback(self): pass
         def close(self): print("Mock DB Session (AddDelLoc) closed.")
         def query(self, model): return self
         def filter(self, criterion): return self

@@ -145,7 +145,10 @@ if __name__ == '__main__':
                                 asga_id="ASGA01", tare_weight=1000.0, max_allowed_weight=5000.0)
 
     class MockDBSession:
-        def add(self, obj): pass; def commit(self): pass; def refresh(self, obj): pass; def rollback(self): pass
+        def add(self, obj): pass
+        def commit(self): pass
+        def refresh(self, obj): pass
+        def rollback(self): pass
         def close(self): print("Mock DB Session closed.")
         def query(self, model): return self # Simplistic query mock
         def filter(self, criterion): return self
