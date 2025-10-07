@@ -85,6 +85,10 @@ class WeightTicket(Base):
     operator_name = Column(String, nullable=True)
     ticket_printed = Column(Boolean, default=False)
 
+    # New columns for hybrid system
+    synced_to_remote = Column(Boolean, default=False, nullable=False)
+    last_sync_timestamp = Column(DateTime, nullable=True)
+
     truck = relationship("Truck", back_populates="weight_tickets")
     aggregate_type = relationship("AggregateType", back_populates="weight_tickets")
     delivery_location = relationship("DeliveryLocation", back_populates="weight_tickets")
@@ -100,7 +104,9 @@ class WeightTicket(Base):
             "net_weight": self.net_weight,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "operator_name": self.operator_name,
-            "ticket_printed": self.ticket_printed
+            "ticket_printed": self.ticket_printed,
+            "synced_to_remote": self.synced_to_remote,
+            "last_sync_timestamp": self.last_sync_timestamp.isoformat() if self.last_sync_timestamp else None
         }
 
 

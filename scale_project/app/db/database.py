@@ -1,42 +1,67 @@
 import json
 import datetime # Required for datetime.datetime.utcnow
-from sqlalchemy import create_engine, inspect, text, or_ 
+from sqlalchemy import create_engine, inspect, text, or_
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from .models import Base, Truck, AggregateType, DeliveryLocation, WeightTicket, AuditLog
+from .config import MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE
 
-DATABASE_URL = "sqlite:///./scale_project.db"
+# --- Local SQLite Database (for offline storage) ---
+LOCAL_SQLITE_DATABASE_URL = "sqlite:///./scale_project_local.db"
+local_engine = create_engine(LOCAL_SQLITE_DATABASE_URL, connect_args={"check_same_thread": False})
+LocalSession = sessionmaker(autocommit=False, autoflush=False, bind=local_engine)
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# --- Remote MariaDB Database ---
+MARIADB_DATABASE_URL = f"mysql+mysqlconnector://{MARIADB_USER}:{MARIADB_PASSWORD}@{MARIADB_HOST}/{MARIADB_DATABASE}"
+remote_engine = create_engine(MARIADB_DATABASE_URL)
+RemoteSession = sessionmaker(autocommit=False, autoflush=False, bind=remote_engine)
 
-def migrate_and_create_db_and_tables():
-    inspector = inspect(engine)
-    if 'trucks' in inspector.get_table_names():
-        columns = inspector.get_columns('trucks')
-        if not any(c['name'] == 'last_used_timestamp' for c in columns):
-            print("Migrating 'trucks' table: Adding 'last_used_timestamp' column.")
-            try:
-                with engine.connect() as connection:
-                    connection.execute(text('ALTER TABLE trucks ADD COLUMN last_used_timestamp DATETIME'))
-                    connection.commit()
-                print("'last_used_timestamp' column added successfully.")
-            except Exception as e:
-                print(f"Error adding 'last_used_timestamp' column: {e}")
-    else:
-        print("'trucks' table not found, will be created.")
 
-    Base.metadata.create_all(bind=engine)
-    print("Database tables ensured/created.")
+def initialize_databases():
+    """
+    Ensures that all tables are created in both the local SQLite and remote MariaDB databases.
+    """
+    print("Initializing local SQLite database...")
+    Base.metadata.create_all(bind=local_engine)
+    print("Local SQLite database tables ensured/created.")
 
-create_db_and_tables = migrate_and_create_db_and_tables
+    print("Initializing remote MariaDB database...")
+    try:
+        Base.metadata.create_all(bind=remote_engine)
+        print("Remote MariaDB database tables ensured/created.")
+    except OperationalError as e:
+        print(f"Error connecting to or initializing remote MariaDB: {e}")
+        print("Please check your connection details in 'config.py' and ensure the database server is running.")
+    except Exception as e:
+        print(f"An unexpected error occurred during remote database initialization: {e}")
 
-def get_db():
-    db = SessionLocal()
+# Make the function available under the old name for now to avoid breaking other parts of the app immediately.
+create_db_and_tables = initialize_databases
+
+def get_local_db():
+    """Provides a session to the local SQLite database."""
+    db = LocalSession()
     try:
         yield db
     finally:
         db.close()
+
+def get_remote_db():
+    """Provides a session to the remote MariaDB database."""
+    db = RemoteSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# The get_db function is now ambiguous. We will default to the remote DB for existing functions
+# but this highlights the need to refactor all DB calls to be explicit.
+def get_db():
+    """
+    DEPRECATED: Provides a session to the remote database.
+    Use get_remote_db() or get_local_db() for clarity.
+    """
+    return get_remote_db()
 
 # --- Generic Model to Dict ---
 # Though models have to_dict(), a generic one might be useful if to_dict() isn't on all models

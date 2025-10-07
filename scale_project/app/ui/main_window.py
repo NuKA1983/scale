@@ -7,21 +7,23 @@ from .aggregate_type_add_window import AddAggregateTypeWindow
 from .aggregate_type_list_window import AggregateTypeListWindow
 from .delivery_location_add_window import AddDeliveryLocationWindow
 from .delivery_location_list_window import DeliveryLocationListWindow
-from .weighing_window import WeighingWindow # New import
-from app.db.database import create_db_and_tables 
+from .weighing_window import WeighingWindow
+from .local_sync_status_window import LocalSyncStatusWindow # Import the new window
+from app.db.database import create_db_and_tables
 
 class MainApplicationWindow(tk.Tk):
     def __init__(self, update_interval_ms=500):
         super().__init__()
 
         self.title("Scale Application - Main")
-        self.geometry("550x250") # Adjusted size for new button
+        self.geometry("550x250")
 
         self.update_interval_ms = update_interval_ms
         self.active_truck_list_window = None
         self.active_aggregate_type_list_window = None
         self.active_delivery_location_list_window = None
-        self.active_weighing_window = None # To manage the weighing window instance
+        self.active_weighing_window = None
+        self.active_sync_status_window = None # To manage the sync status window instance
 
         create_db_and_tables() 
         print("Database tables ensured to be created if they didn't exist.")
@@ -41,6 +43,8 @@ class MainApplicationWindow(tk.Tk):
         # --- Weighing Menu (or could be a top-level menu) ---
         weighing_menu = Menu(menubar, tearoff=0)
         weighing_menu.add_command(label="New Weighing Ticket", command=self.open_weighing_window)
+        weighing_menu.add_separator()
+        weighing_menu.add_command(label="View Local Sync Status", command=self.open_sync_status_window)
         menubar.add_cascade(label="Weighing", menu=weighing_menu)
 
         # --- Manage Menu ---
@@ -103,10 +107,14 @@ class MainApplicationWindow(tk.Tk):
             self.active_weighing_window.lift()
             self.active_weighing_window.focus_set()
         else:
-            # Pass the scale_reader instance to the WeighingWindow
             self.active_weighing_window = WeighingWindow(self, self.scale_reader, self.update_interval_ms)
-            # No wait_window() if we want to interact with main window while weighing is open,
-            # but WeighingWindow uses grab_set() to be modal.
+
+    def open_sync_status_window(self):
+        if self.active_sync_status_window and self.active_sync_status_window.winfo_exists():
+            self.active_sync_status_window.lift()
+            self.active_sync_status_window.focus_set()
+        else:
+            self.active_sync_status_window = LocalSyncStatusWindow(self)
 
     # --- Truck Window Management ---
     def open_add_truck_window(self):
@@ -184,7 +192,9 @@ class MainApplicationWindow(tk.Tk):
         
         # Explicitly destroy any open Toplevel windows
         if self.active_weighing_window and self.active_weighing_window.winfo_exists():
-            self.active_weighing_window.destroy() # WeighingWindow manages its own DB session
+            self.active_weighing_window.destroy()
+        if self.active_sync_status_window and self.active_sync_status_window.winfo_exists():
+            self.active_sync_status_window.destroy()
         if self.active_truck_list_window and self.active_truck_list_window.winfo_exists():
             self.active_truck_list_window.destroy()
         if self.active_aggregate_type_list_window and self.active_aggregate_type_list_window.winfo_exists():
